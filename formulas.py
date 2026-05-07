@@ -5,24 +5,16 @@ import numpy as np
 #1. make_prediction of the new traffic using the product of the transpose of the transition matrix and the traffic vector
 # new x = transpose of TM x old x
 #use the function below
-def make_prediction(transition_matrix, traffic_vector):
+def make_prediction(transition_matrix, traffic_vector, entrants=np.array([0,0,0,0])):
     #parameters(required input) => transition matrix and traffic vector
-    return transition_matrix.T @ traffic_vector # @ is the multiplication symbol for matrices in python's numpy library
+    return (transition_matrix.T @ traffic_vector) + entrants # @ is the multiplication symbol for matrices in python's numpy library
     #returns our new inflow vector
-
-#since each intersection has a fixed capacity, there will always be congestion if that capacity is exceeded
-#To account for it, the difference btn the inflow into and the capacity of an intersection gives the extra vehicles called the congestion
-#use the function below
-def get_congestion(traffic_vector, capacity_matrix):
-    #parameters => traffic vector, capacity matrix
-    return np.clip(traffic_vector - capacity_matrix,0,None) # numpy.clip function forces all negative values in the vector to zero so as to avoid negative queues
-    #returns the waiting vehicles or excess vehicles that caused the congestion
 
 #since sometimes the might be an already existing queue as new traffic enters, we combine the existing and new to get all vehicles waiting(total queue)
 #to get the total queue, we need the original queue and congestion plus the retained(vehicles that don't make it out of traffic)
 # new queue = original queue + conjestion + (inflow - outfow)
 #use the function below
-def get_queue(original_q=0, inflow=0, saturation=3800, green_time=0):
+def get_queue(inflow=0, saturation=3800, green_time=0):
     #outflow are the vehicles that successfully make it out of traffic
     #these are got from the discharge rate during every green time
     #green time is the time when the light turns green and traffic is moving
@@ -30,7 +22,7 @@ def get_queue(original_q=0, inflow=0, saturation=3800, green_time=0):
     #its the product of saturation(vehicles per hour out of an intersection) and green time 
     outflow = ((saturation)/3600) * green_time # saturation is divided by 3600 to convert it to vehicles per second
     #here we get the difference btn inflow and outflow vectors and add it to the sum of existing queue and conjestion (original queue)    
-    return np.clip(original_q, 0, None) + np.clip(inflow - outflow, 0, None)
+    return np.clip(inflow - outflow, 0, None)
     #return new queue
 
 #the green time is the effective time in the full traffic cycle(red light to green and back to red) for traffic to move freely i.e G.T = time - lost time
@@ -87,24 +79,16 @@ def generate_transition_matrix(transition_matrix, adjacency_matrix, capacity_mat
     probabilities = transition_matrix.copy() #copy the original transition matrix to preserve its structure while we fill in the new probabilities
     green_times = [] #this list will hold the calculated green times for each intersection based on the current traffic conditions and queue sizes
 
-    #create empty probabilities matrix with the specified dimensions (rows and cols)
-    #this is done to prepare for the calculations of the weighted probabilities and the normalised transition matrix based on the current traffic conditions and queue sizes
-
-    #calculate the congestion for each intersection using the get_congestion function,
-    # which gives us the number of vehicles waiting due to congestion based on the current traffic vector and capacity matrix
-    queue = get_congestion(traffic_vector, capacity_matrix)
-    print("First queue",queue)
-
     #calculate the green time for each intersection using the get_green_time function,
     # which allocates green time based on the priority ratio of demand and queue sizes
     #use a loop to iterate through each intersection and calculate the green time based on the combined queue (original queue + congestion) and the demand (traffic vector) for that intersection
     for i in range(len(transition_matrix)):
         #append the calculated green time for each intersection to the green_times list, which will be used later to calculate the weighted probabilities for traffic movement
-        green_times.append(get_green_time(queue=int(queue[i])+int(org_queue[i]),demand=int(prediction[i]), demands=prediction))
+        green_times.append(get_green_time(queue=int(org_queue[i]),demand=int(prediction[i]), demands=prediction))
         for j in range(len(transition_matrix[i])):
             #calculate the weighted probability for traffic movement from intersection i to j using the get_weighted_probability function,
             # which takes into account the adjacency, traffic volume, capacity, green time, travel time, and congestion for that movement
-            probabilities[i][j] = get_weighted_probability(adjacency=int(adjacency_matrix[i][j]),traffic = int(traffic_vector[i]), capacity=int(capacity_matrix[i]), green_time=green_times[i], congestion=queue[i])
+            probabilities[i][j] = get_weighted_probability(adjacency=int(adjacency_matrix[i][j]),traffic = int(traffic_vector[i]), capacity=int(capacity_matrix[i]), green_time=green_times[i], congestion=org_queue[i])
 
     #after calculating the weighted probabilities for all possible movements from each intersection,
     #  we need to normalise these probabilities to ensure they sum up to 1 for each intersection
@@ -114,8 +98,8 @@ def generate_transition_matrix(transition_matrix, adjacency_matrix, capacity_mat
             transition_matrix[i][j] = normalise_probability(probabilities[i][j],sum(probabilities[i]))
     #after generating the transition matrix based on the current traffic conditions and queue sizes,
     #we need to update the queue sizes for each intersection to reflect the new traffic flow and congestion levels
-    queue = get_queue(original_q=queue, inflow=traffic_vector,green_time=np.array(green_times))
-    print("final",queue)
+    queue = get_queue(inflow=traffic_vector,green_time=np.array(green_times))
+    print("queue",queue)
 
     #the function returns the generated transition matrix and the updated queue sizes for each intersection,
     # which can be used in subsequent iterations to predict traffic flow and optimise signal timings
