@@ -1,44 +1,5 @@
 #import necessary libraries such as numpy for matrix operations
 import numpy as np
-#import random for random sample values like traffic
-import random
-
-#make an adjacency matrix which is the network layout of the traffic network
-#this matrix is a bi-directional graph showing the connections between the nodes
-adjacency_matrix = np.array([
-    [0, 1, 0, 1],
-    [1, 0, 1, 0],
-    [0, 1, 0, 1],
-    [1, 0, 1, 0]
-    ])
-
-#make a transition matrix that will be used to predict, redistribute and organise the traffic flow
-#this is a probability matrix that shows the likely direction that traffic will flow such as A to B or A to D but never A to C 
-# since there's no connection or route from interection A to intersection C
-transition_matrix = np.array([
-    [0, 0.5, 0, 0.5],
-    [0.5, 0, 0.5, 0],
-    [0, 0.5, 0, 0.5],
-    [0.5, 0, 0.5, 0]
-    ])
-
-#make the vector that holds the incoming traffic into the network's nodes
-traffic_vector = np.array(
-    [10, 90, 10, 10]
-    )
-
-#make a matrix that holds the interesction(node) capacity
-capacity_matrix=np.array([700, 800, 700, 600])
-
-#use random to generate new traffic simulating inflow
-traffic = random.randint
-
-entrants_vector = np.array(
-    [traffic(0,100), traffic(0,100), traffic(0,100), traffic(0,100)]
-    )
-
-#make a vector to hold the queue sizes for each node(intersection)
-queue=np.array([0,0,0,0])
 
 #create functions that make various calculations for traffic flow and optimisation
 #1. make_prediction of the new traffic using the product of the transpose of the transition matrix and the traffic vector
@@ -82,7 +43,7 @@ def get_green_time(queue=0, alpha=1, beta=4, demand=0,demands=[], cycle_time=180
     #the priority ratio is the weighted sum of demand and queue for a particular intersection divided by the sum of the weighted sums for all intersections
     #so if an intersection has a high demand and queue, it will have a higher priority ratio and thus more green time allocated to it
     #priority ratio = (alpha*demand + beta*queue) / sum of (alpha*demand + beta*queue) for all intersections
-    priority_ratio = float((alpha*demand + beta*queue)/sum([alpha*int(demand) + beta*queue for demand in demands]))
+    priority_ratio = float((alpha*demand + beta*queue)/max(sum([alpha*int(demand) + beta*queue for demand in demands]), 1))
     #so for each intersection, green time = priority ratio X overall green time
     return priority_ratio*(cycle_time - lost_time) #return green time for an intersection
 
@@ -121,21 +82,13 @@ def normalise_probability(weighted_probability, total_weighted_probability):
 # and updates the queue sizes based on the current traffic conditions and the original queue sizes
 #it takes the original queue sizes, traffic vector, and dimensions of the transition matrix as input
 #use the function below
-def generate_transition_matrix(org_queue, traffic_vector, rows=0, cols=0):
+def generate_transition_matrix(transition_matrix, adjacency_matrix, capacity_matrix, org_queue, traffic_vector, prediction, rows=0, cols=0):
     #initialize empty lists for the transition matrix, probabilities, and green times
-    transition_matrix, probabilities, green_times = [], [], []
+    probabilities = transition_matrix.copy() #copy the original transition matrix to preserve its structure while we fill in the new probabilities
+    green_times = [] #this list will hold the calculated green times for each intersection based on the current traffic conditions and queue sizes
 
-    #create empty transition matrix and probabilities matrix with the specified dimensions (rows and cols)
+    #create empty probabilities matrix with the specified dimensions (rows and cols)
     #this is done to prepare for the calculations of the weighted probabilities and the normalised transition matrix based on the current traffic conditions and queue sizes
-    #use nested loops to fill the transition matrix and probabilities matrix with zeros as initial values
-    for i in range(rows):
-        #append empty lists to the transition matrix and probabilities list for each row
-        transition_matrix.append([])
-        probabilities.append([])
-        for j in range(cols):
-            #since the transition matrix is a probability matrix that shows the likelihood of traffic moving from one intersection to another, we initialize it with zeros
-            transition_matrix[i].append(0)
-            probabilities[i].append(0)
 
     #calculate the congestion for each intersection using the get_congestion function,
     # which gives us the number of vehicles waiting due to congestion based on the current traffic vector and capacity matrix
@@ -147,7 +100,7 @@ def generate_transition_matrix(org_queue, traffic_vector, rows=0, cols=0):
     #use a loop to iterate through each intersection and calculate the green time based on the combined queue (original queue + congestion) and the demand (traffic vector) for that intersection
     for i in range(len(transition_matrix)):
         #append the calculated green time for each intersection to the green_times list, which will be used later to calculate the weighted probabilities for traffic movement
-        green_times.append(get_green_time(queue=int(queue[i])+int(org_queue[i]),demand=int(traffic_vector[i]), demands=traffic_vector))
+        green_times.append(get_green_time(queue=int(queue[i])+int(org_queue[i]),demand=int(prediction[i]), demands=prediction))
         for j in range(len(transition_matrix[i])):
             #calculate the weighted probability for traffic movement from intersection i to j using the get_weighted_probability function,
             # which takes into account the adjacency, traffic volume, capacity, green time, travel time, and congestion for that movement
@@ -161,26 +114,17 @@ def generate_transition_matrix(org_queue, traffic_vector, rows=0, cols=0):
             transition_matrix[i][j] = normalise_probability(probabilities[i][j],sum(probabilities[i]))
     #after generating the transition matrix based on the current traffic conditions and queue sizes,
     #we need to update the queue sizes for each intersection to reflect the new traffic flow and congestion levels
-    queue = get_queue(original_q=queue, inflow=traffic_vector, saturation=3800, green_time=np.array(green_times))
+    queue = get_queue(original_q=queue, inflow=traffic_vector,green_time=np.array(green_times))
     print("final",queue)
 
     #the function returns the generated transition matrix and the updated queue sizes for each intersection,
     # which can be used in subsequent iterations to predict traffic flow and optimise signal timings
     return np.array(transition_matrix), queue
 
-#the main loop of the program simulates the traffic flow and signal optimisation over multiple iterations (100 in this case)
-#in each iteration, we generate a new transition matrix based on the current traffic conditions and queue sizes,
-# make a prediction for the new traffic vector using the transition matrix, and update the traffic vector for the next iteration
-#this loop allows us to observe how the traffic flow evolves over time and how the signal timings can be optimised based on the changing traffic conditions and congestion levels at each intersection
-#use the loop below(with n as the iteration counter)
-n=0
-while(n < 100):
-    transition_matrix, queue = generate_transition_matrix(org_queue=queue, traffic_vector=traffic_vector, rows=4, cols=4)
-    print("TM:",transition_matrix)
+def tabulate(n, *traffic, table=None):
+    table[0].append(n)  # Append the current time point (iteration number) to the first row of the table
+    table[1].append(traffic[0][0])  # Append the traffic volume for intersection A to the second row of the table
+    table[2].append(traffic[0][1])  # Append the traffic volume for intersection B to the third row of the table
+    table[3].append(traffic[0][2])  # Append the traffic volume for intersection C to the fourth row of the table
+    table[4].append(traffic[0][3])  # Append the traffic volume for intersection D to the fifth row of the table
 
-    prediction = make_prediction(transition_matrix=transition_matrix, traffic_vector=traffic_vector)
-    traffic_vector = (entrants_vector + prediction).astype(np.int64)
-
-    print("T_V:",traffic_vector)
-
-    n+=1
