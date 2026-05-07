@@ -1,12 +1,13 @@
 #import necessary libraries such as numpy for matrix operations
 import numpy as np
 
+import random
 #create functions that make various calculations for traffic flow and optimisation
 #1. make_prediction of the new traffic using the product of the transpose of the transition matrix and the traffic vector
 # new x = transpose of TM x old x
 #use the function below
 def make_prediction(transition_matrix, traffic_vector, entrants=np.array([0,0,0,0])):
-    #parameters(required input) => transition matrix and traffic vector
+    #parameters(required input) => transition matrix, traffic vector and entrants
     return (transition_matrix.T @ traffic_vector) + entrants # @ is the multiplication symbol for matrices in python's numpy library
     #returns our new inflow vector
 
@@ -14,13 +15,13 @@ def make_prediction(transition_matrix, traffic_vector, entrants=np.array([0,0,0,
 #to get the total queue, we need the original queue and congestion plus the retained(vehicles that don't make it out of traffic)
 # new queue = original queue + conjestion + (inflow - outfow)
 #use the function below
-def get_queue(inflow=0, saturation=3800, green_time=0):
+def get_queue(inflow=0, saturation=random.randint(1600, 2500), green_time=0):
     #outflow are the vehicles that successfully make it out of traffic
     #these are got from the discharge rate during every green time
     #green time is the time when the light turns green and traffic is moving
     #so discharge rate(outflow) is the amount of cars that move out of an intersection per green time
     #its the product of saturation(vehicles per hour out of an intersection) and green time 
-    outflow = ((saturation)/3600) * green_time # saturation is divided by 3600 to convert it to vehicles per second
+    outflow = np.ceil(((saturation)/3600) * green_time) # saturation is divided by 3600 to convert it to vehicles per second
     #here we get the difference btn inflow and outflow vectors and add it to the sum of existing queue and conjestion (original queue)    
     return np.clip(inflow - outflow, 0, None)
     #return new queue
@@ -28,7 +29,7 @@ def get_queue(inflow=0, saturation=3800, green_time=0):
 #the green time is the effective time in the full traffic cycle(red light to green and back to red) for traffic to move freely i.e G.T = time - lost time
 # lost time is the waste time for other activities like not moving, driver starting move when light is already green, passengers crossing, etc... 
 #use the function below
-def get_green_time(queue=0, alpha=1, beta=4, demand=0,demands=[], cycle_time=180, lost_time=8.5):
+def get_green_time(queue=0, alpha=1, beta=1, demand=0,demands=[], cycle_time=180, lost_time=random.randint(6, 8)):
     #on the basis of traffic optimisation, we use a priority ratio that helps assign more green time to congested intersections and less to those not congested
     #But priority can either be given to demand(incoming traffic) or queue(waiting vehicles) hence the weights, alpha and beta
     #these weights leverage priority between demand and queue depending on the system
@@ -43,21 +44,16 @@ def get_green_time(queue=0, alpha=1, beta=4, demand=0,demands=[], cycle_time=180
 #based on various factors such as adjacency, traffic volume, capacity, green time, travel time and congestion
 #the formula for weighted probability is a product of these factors, with congestion penalized heavily to discourage traffic from moving towards congested intersections
 #use  the function below
-def get_weighted_probability(adjacency=0, traffic=0, capacity=0, green_time=0, travel_time=250, congestion=0):
+def get_weighted_probability(adjacency=0, traffic=0, capacity=0, green_time=0, travel_time=random.randint(1800, 3600), congestion=0):
     #calculate the congestion ratio which is the ratio of total traffic (current traffic + congestion) to the capacity of the intersection
     #a higher congestion ratio indicates a more congested intersection, which should be less attractive for traffic to move towards
     congestion_ratio = (traffic + int(congestion)) / (capacity)
-
-    # Penalize congested destinations heavily
-    congestion_penalty = 1 / (1 + congestion_ratio*10)  # Adjust multiplier for sensitivity
-    # Lower travel time = higher probability
-    travel_time_factor = 1 / (1 + travel_time*0.001)
     
     #the adjacency factor ensures that traffic can only move to adjacent intersections
     #while the other factors influence the likelihood of that movement based on current conditions
     #the formula combines these factors to calculate a weighted probability for traffic movement from one intersection to another,
     #encouraging movement towards less congested and more efficient routes
-    return float((adjacency * capacity * green_time * congestion_penalty * travel_time_factor) / ((1 + congestion_ratio)))
+    return float((adjacency * capacity * green_time) / (travel_time*(1 + congestion_ratio)))
     #return the weighted probability
 
 #the normalised probability is the weighted probability divided by the sum of all weighted probabilities for a particular intersection
@@ -112,3 +108,45 @@ def tabulate(n, *traffic, table=None):
     table[3].append(traffic[0][2])  # Append the traffic volume for intersection C to the fourth row of the table
     table[4].append(traffic[0][3])  # Append the traffic volume for intersection D to the fifth row of the table
 
+def define_traffic(normal_traffic, high_traffic, low_traffic):
+    #use random to generate new traffic simulating inflow
+    traffic = random.randint
+
+    if normal_traffic:
+        return np.array(
+            [traffic(0,100), traffic(0,100), traffic(0,100), traffic(0,100)]
+            )
+    elif high_traffic:
+        return np.array(
+            [traffic(0,1000), traffic(0,1000), traffic(0,1000), traffic(0,1000)]
+            )
+    elif low_traffic:
+        return np.array(
+            [traffic(0,50), traffic(0,50), traffic(0,50), traffic(0,50)]
+            )
+def set_traffic_simulation():
+    situation = input("Enter traffic situation (normal, high, low): ")
+    if situation.lower() == "normal":    
+        #make the vector that holds the incoming traffic into the network's nodes
+        traffic_vector = define_traffic(normal_traffic=True, high_traffic=False, low_traffic=False)
+
+        def get_entrants():
+            return define_traffic(normal_traffic=True, high_traffic=False, low_traffic=False)
+
+        #make a vector to hold the queue sizes for each node(intersection)
+        queue=define_traffic(normal_traffic=True, high_traffic=False, low_traffic=False)
+        return traffic_vector, queue, get_entrants
+    elif situation.lower() == "high":
+        traffic_vector = define_traffic(normal_traffic=False, high_traffic=True, low_traffic=False)
+        
+        def get_entrants():
+            return define_traffic(normal_traffic=False, high_traffic=True, low_traffic=False)
+        queue=define_traffic(normal_traffic=False, high_traffic=True, low_traffic=False)
+        return traffic_vector, queue, get_entrants
+    elif situation.lower() == "low":
+        traffic_vector = define_traffic(normal_traffic=False, high_traffic=False, low_traffic=True)
+       
+        def get_entrants():
+            return define_traffic(normal_traffic=False, high_traffic=False, low_traffic=True)
+        queue=define_traffic(normal_traffic=False, high_traffic=False, low_traffic=True)
+        return traffic_vector, queue, get_entrants
